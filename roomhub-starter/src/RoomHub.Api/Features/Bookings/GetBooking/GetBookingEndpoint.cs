@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 using RoomHub.Api.Common;
 using RoomHub.Api.Domain.Bookings;
+using RoomHub.Api.Infrastructure.Persistence;
 
 namespace RoomHub.Api.Features.Bookings.GetBooking;
 
@@ -15,15 +17,18 @@ public static class GetBookingEndpoint
         int Attendees,
         string Status);
 
-    // Read-only query: no command handler. At Level C this reads the DbContext with AsNoTracking().
+    // Read-only query: reads the DbContext directly, without tracking.
     public static void Map(RouteGroupBuilder group)
     {
         group.MapGet("/{id:guid}", async Task<Results<Ok<Response>, ProblemHttpResult>> (
             Guid id,
-            IBookingRepository bookings,
+            RoomHubDbContext dbContext,
             CancellationToken cancellationToken) =>
         {
-            var b = await bookings.GetByIdAsync(id, cancellationToken);
+            var b = await dbContext.Bookings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
             if (b is null)
                 return BookingErrors.NotFound.ToProblem();
 

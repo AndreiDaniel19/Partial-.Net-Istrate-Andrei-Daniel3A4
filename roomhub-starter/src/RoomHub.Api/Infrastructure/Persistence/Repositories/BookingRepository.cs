@@ -1,34 +1,18 @@
+using Microsoft.EntityFrameworkCore;
 using RoomHub.Api.Domain.Bookings;
 
 namespace RoomHub.Api.Infrastructure.Persistence.Repositories;
 
-// Temporary (Level B): in-memory data, lost on restart. Replaced by EF Core + SQLite at Level C.
-public sealed class BookingRepository : IBookingRepository
+// Never calls SaveChangesAsync: that is the job of the Unit of Work (the DbContext).
+public sealed class BookingRepository(RoomHubDbContext dbContext) : IBookingRepository
 {
-    private readonly List<Booking> _bookings = new();
-    private readonly object _lock = new();
+    public async Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        await dbContext.Bookings.FindAsync([id], cancellationToken);
 
-    public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            return Task.FromResult(_bookings.FirstOrDefault(b => b.Id == id));
-        }
-    }
+    public Task<List<Booking>> GetActiveForRoomAsync(Guid roomId, CancellationToken cancellationToken = default) =>
+        dbContext.Bookings
+            .Where(b => b.RoomId == roomId && b.Status == BookingStatus.Active)
+            .ToListAsync(cancellationToken);
 
-    public Task<List<Booking>> GetActiveForRoomAsync(Guid roomId, CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            return Task.FromResult(_bookings.Where(b => b.RoomId == roomId && b.IsActive).ToList());
-        }
-    }
-
-    public void Add(Booking booking)
-    {
-        lock (_lock)
-        {
-            _bookings.Add(booking);
-        }
-    }
+    public void Add(Booking booking) => dbContext.Bookings.Add(booking);
 }

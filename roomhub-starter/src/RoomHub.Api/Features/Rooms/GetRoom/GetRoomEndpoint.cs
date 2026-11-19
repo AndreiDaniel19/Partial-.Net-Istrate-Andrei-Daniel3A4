@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 using RoomHub.Api.Common;
 using RoomHub.Api.Domain.Rooms;
+using RoomHub.Api.Infrastructure.Persistence;
 
 namespace RoomHub.Api.Features.Rooms.GetRoom;
 
@@ -8,19 +10,24 @@ public static class GetRoomEndpoint
 {
     public sealed record Response(Guid Id, string Name, int Capacity);
 
-    // Read-only query: no command handler. At Level C this reads the DbContext with AsNoTracking().
+    // Read-only query: reads the DbContext directly, without tracking.
     public static void Map(RouteGroupBuilder group)
     {
         group.MapGet("/{id:guid}", async Task<Results<Ok<Response>, ProblemHttpResult>> (
             Guid id,
-            IRoomRepository rooms,
+            RoomHubDbContext dbContext,
             CancellationToken cancellationToken) =>
         {
-            var room = await rooms.GetByIdAsync(id, cancellationToken);
-            if (room is null)
+            var response = await dbContext.Rooms
+                .AsNoTracking()
+                .Where(r => r.Id == id)
+                .Select(r => new Response(r.Id, r.Name, r.Capacity))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (response is null)
                 return RoomErrors.NotFound.ToProblem();
 
-            return TypedResults.Ok(new Response(room.Id, room.Name, room.Capacity));
+            return TypedResults.Ok(response);
         });
     }
 }

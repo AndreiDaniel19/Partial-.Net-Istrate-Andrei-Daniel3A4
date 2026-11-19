@@ -39,5 +39,6 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(b => new { b.RoomId, b.Status });
+        builder.HasIndex(b => new { b.BookedBy, b.Status });
     }
 }

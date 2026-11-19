@@ -13,6 +13,8 @@ public sealed class Booking
 {
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(4);
 
+    public const int MaxActivePerParticipantPerDay = 2;
+
     private Booking()
     {
     }
@@ -33,11 +35,14 @@ public sealed class Booking
         DateTime endUtc,
         int attendees,
         IEnumerable<Booking> existingRoomBookings,
+        IEnumerable<Booking> existingPersonBookings,
         DateTime nowUtc)
     {
         // R2
         if (string.IsNullOrWhiteSpace(bookedBy))
             return BookingErrors.BookedByRequired;
+
+        bookedBy = bookedBy.Trim();
 
         // R3
         var rangeResult = DateRange.Create(startUtc, endUtc);
@@ -65,11 +70,20 @@ public sealed class Booking
         if (existingRoomBookings.Any(b => b.RoomId == room.Id && b.IsActive && b.Range.Overlaps(range)))
             return BookingErrors.Overlap;
 
+        // R9: at most 2 active bookings per participant per UTC day of StartUtc, across all rooms.
+        var sameDayActive = existingPersonBookings.Count(b =>
+            b.IsActive &&
+            b.BookedBy == bookedBy &&
+            b.Range.StartUtc.Date == range.StartUtc.Date);
+
+        if (sameDayActive >= MaxActivePerParticipantPerDay)
+            return BookingErrors.DailyLimitReached;
+
         return new Booking
         {
             Id = Guid.NewGuid(),
             RoomId = room.Id,
-            BookedBy = bookedBy.Trim(),
+            BookedBy = bookedBy,
             Range = range,
             Attendees = attendees,
             Status = BookingStatus.Active

@@ -26,7 +26,14 @@ public sealed class CreateBookingHandler(
         if (room is null)
             return RoomErrors.NotFound;
 
-        var activeBookings = await bookings.GetActiveForRoomAsync(room.Id, cancellationToken);
+        var roomBookings = await bookings.GetActiveForRoomAsync(room.Id, cancellationToken);
+
+        // R9 data; the rule itself is checked in Booking.Create.
+        var bookedBy = command.BookedBy?.Trim();
+        var personBookings = string.IsNullOrEmpty(bookedBy)
+            ? []
+            : await bookings.GetActiveForBookedByAsync(bookedBy, cancellationToken);
+
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
 
         var result = Booking.Create(
@@ -35,7 +42,8 @@ public sealed class CreateBookingHandler(
             command.StartUtc,
             command.EndUtc,
             command.Attendees,
-            activeBookings,
+            roomBookings,
+            personBookings,
             nowUtc);
 
         if (result.IsFailure)

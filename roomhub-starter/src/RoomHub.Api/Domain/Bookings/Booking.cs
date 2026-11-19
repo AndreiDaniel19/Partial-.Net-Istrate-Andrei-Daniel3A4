@@ -13,6 +13,13 @@ public sealed class Booking
 {
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(4);
 
+    // R10: rooms with capacity > 10 can be booked for at most 2 hours.
+    public const int LargeRoomCapacityThreshold = 10;
+    public static readonly TimeSpan LargeRoomMaxDuration = TimeSpan.FromHours(2);
+
+    // R11: cancelling requires at least 60 minutes before the start.
+    public static readonly TimeSpan MinCancelNotice = TimeSpan.FromMinutes(60);
+
     public const int MaxActivePerParticipantPerDay = 2;
 
     private Booking()
@@ -62,7 +69,11 @@ public sealed class Booking
         if (range.StartUtc < nowUtc)
             return BookingErrors.StartInPast;
 
-        // R6: exactly 4 hours is allowed.
+        // R10: large rooms (capacity > 10) allow at most 2 hours (exactly 2 is allowed).
+        if (room.Capacity > LargeRoomCapacityThreshold && range.Duration > LargeRoomMaxDuration)
+            return BookingErrors.TooLongForLargeRoom;
+
+        // R6: other rooms allow at most 4 hours (exactly 4 is allowed).
         if (range.Duration > MaxDuration)
             return BookingErrors.TooLong;
 
@@ -91,10 +102,14 @@ public sealed class Booking
     }
 
     // R8: Active -> Cancelled; cancelling twice is a conflict.
-    public Result Cancel()
+    // R11: only if the booking starts at least 60 minutes after nowUtc.
+    public Result Cancel(DateTime nowUtc)
     {
         if (Status == BookingStatus.Cancelled)
             return BookingErrors.AlreadyCancelled;
+
+        if (Range.StartUtc - nowUtc < MinCancelNotice)
+            return BookingErrors.TooLateToCancel;
 
         Status = BookingStatus.Cancelled;
         return Result.Success();

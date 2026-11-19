@@ -25,6 +25,12 @@ public static class BookingErrors
     public static readonly Error TooLong =
         Error.Validation("Booking.TooLong", "A booking can last at most 4 hours.");
 
+    public static readonly Error TooLongForLargeRoom =
+        Error.Validation("Booking.TooLongForLargeRoom", "Rooms with more than 10 seats can be booked for at most 2 hours.");
+
+    public static readonly Error TooLateToCancel =
+        Error.Conflict("Booking.TooLateToCancel", "A booking can be cancelled only at least 60 minutes before it starts.");
+
     public static readonly Error Overlap =
         Error.Conflict("Booking.Overlap", "The room is occupied in this interval.");
 

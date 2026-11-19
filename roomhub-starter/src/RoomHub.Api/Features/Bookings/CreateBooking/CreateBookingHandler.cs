@@ -1,48 +1,49 @@
-using RoomHub.Api.Common;
+using RoomHub.Api.Common.Cqrs;
 using RoomHub.Api.Domain.Bookings;
-using RoomHub.Api.Infrastructure.Persistence.Repositories;
+using RoomHub.Api.Domain.Common;
+using RoomHub.Api.Domain.Rooms;
 
 namespace RoomHub.Api.Features.Bookings.CreateBooking;
 
-// Level A: logic moved as-is from BookingService. The bugs listed in BUGS.md are fixed at Levels B/C.
-public sealed class CreateBookingHandler(RoomRepository rooms, BookingRepository bookings)
+public sealed record CreateBookingCommand(
+    Guid RoomId,
+    string? BookedBy,
+    DateTime StartUtc,
+    DateTime EndUtc,
+    int Attendees) : ICommand<Booking>;
+
+public sealed class CreateBookingHandler(
+    IRoomRepository rooms,
+    IBookingRepository bookings,
+    IUnitOfWork unitOfWork,
+    TimeProvider timeProvider)
+    : ICommandHandler<CreateBookingCommand, Booking>
 {
-    public Booking Handle(Guid roomId, string? bookedBy, DateTime startUtc, DateTime endUtc, int attendees)
+    public async Task<Result<Booking>> Handle(CreateBookingCommand command, CancellationToken cancellationToken)
     {
-        var room = rooms.Get(roomId);
+        // 404 before any validation.
+        var room = await rooms.GetByIdAsync(command.RoomId, cancellationToken);
         if (room is null)
-            throw new BusinessException("RoomNotFound", "The room does not exist.", 404);
+            return RoomErrors.NotFound;
 
-        if (string.IsNullOrWhiteSpace(bookedBy))
-            throw new BusinessException("InvalidBookedBy", "BookedBy is required.", 400);
+        var activeBookings = await bookings.GetActiveForRoomAsync(room.Id, cancellationToken);
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
 
-        if (endUtc <= startUtc)
-            throw new BusinessException("InvalidRange", "The end must be after the start.", 400);
+        var result = Booking.Create(
+            room,
+            command.BookedBy,
+            command.StartUtc,
+            command.EndUtc,
+            command.Attendees,
+            activeBookings,
+            nowUtc);
 
-        if (attendees <= 0)
-            throw new BusinessException("InvalidAttendees", "Attendees must be positive.", 400);
+        if (result.IsFailure)
+            return result.Error;
 
-        if (attendees > room.Capacity)
-            throw new BusinessException("AttendeesExceedCapacity", "The room does not have enough seats.", 400);
+        bookings.Add(result.Value);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        foreach (var existing in bookings.ListForRoom(roomId))
-        {
-            if (existing.StartUtc <= endUtc && startUtc <= existing.EndUtc)
-                throw new BusinessException("RoomOccupied", "The room is occupied in this interval.", 409);
-        }
-
-        var booking = new Booking
-        {
-            Id = Guid.NewGuid(),
-            RoomId = roomId,
-            BookedBy = bookedBy.Trim(),
-            StartUtc = startUtc,
-            EndUtc = endUtc,
-            Attendees = attendees,
-            Status = BookingStatus.Active
-        };
-
-        bookings.Add(booking);
-        return booking;
+        return result.Value;
     }
 }

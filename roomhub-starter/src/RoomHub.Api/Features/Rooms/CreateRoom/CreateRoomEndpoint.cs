@@ -1,3 +1,8 @@
+using Microsoft.AspNetCore.Http.HttpResults;
+using RoomHub.Api.Common;
+using RoomHub.Api.Common.Cqrs;
+using RoomHub.Api.Domain.Rooms;
+
 namespace RoomHub.Api.Features.Rooms.CreateRoom;
 
 public static class CreateRoomEndpoint
@@ -8,9 +13,18 @@ public static class CreateRoomEndpoint
 
     public static void Map(RouteGroupBuilder group)
     {
-        group.MapPost("/", (Request request, CreateRoomHandler handler) =>
+        group.MapPost("/", async Task<Results<Created<Response>, ProblemHttpResult>> (
+            Request request,
+            ICommandHandler<CreateRoomCommand, Room> handler,
+            CancellationToken cancellationToken) =>
         {
-            var room = handler.Handle(request.Name, request.Capacity);
+            var result = await handler.Handle(
+                new CreateRoomCommand(request.Name, request.Capacity), cancellationToken);
+
+            if (result.IsFailure)
+                return result.Error.ToProblem();
+
+            var room = result.Value;
             return TypedResults.Created(
                 $"/api/rooms/{room.Id}",
                 new Response(room.Id, room.Name, room.Capacity));

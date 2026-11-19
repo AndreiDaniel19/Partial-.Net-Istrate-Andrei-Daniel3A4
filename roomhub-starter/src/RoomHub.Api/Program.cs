@@ -1,28 +1,24 @@
-using RoomHub.Api.Common;
+using RoomHub.Api.Common.Cqrs;
+using RoomHub.Api.Domain.Bookings;
+using RoomHub.Api.Domain.Common;
+using RoomHub.Api.Domain.Rooms;
 using RoomHub.Api.Features.Bookings;
-using RoomHub.Api.Features.Bookings.CancelBooking;
-using RoomHub.Api.Features.Bookings.CreateBooking;
-using RoomHub.Api.Features.Bookings.GetBooking;
 using RoomHub.Api.Features.Rooms;
-using RoomHub.Api.Features.Rooms.CreateRoom;
-using RoomHub.Api.Features.Rooms.GetRoom;
+using RoomHub.Api.Infrastructure.Persistence;
 using RoomHub.Api.Infrastructure.Persistence.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// In-memory repositories (Level A). Replaced by EF Core + SQLite at Level C.
-builder.Services.AddSingleton<RoomRepository>();
-builder.Services.AddSingleton<BookingRepository>();
+builder.Services.AddSingleton(TimeProvider.System);
 
-builder.Services.AddScoped<CreateRoomHandler>();
-builder.Services.AddScoped<GetRoomHandler>();
-builder.Services.AddScoped<CreateBookingHandler>();
-builder.Services.AddScoped<GetBookingHandler>();
-builder.Services.AddScoped<CancelBookingHandler>();
+// In-memory persistence (Level B). Replaced by EF Core + SQLite (Scoped) at Level C.
+builder.Services.AddSingleton<IRoomRepository, RoomRepository>();
+builder.Services.AddSingleton<IBookingRepository, BookingRepository>();
+builder.Services.AddSingleton<IUnitOfWork, InMemoryUnitOfWork>();
+
+builder.Services.AddHandlers(typeof(Program).Assembly);
 
 var app = builder.Build();
-
-app.UseMiddleware<ExceptionMiddleware>();
 
 app.MapGet("/", () => "RoomHub API is running.");
 app.MapRoomsEndpoints();

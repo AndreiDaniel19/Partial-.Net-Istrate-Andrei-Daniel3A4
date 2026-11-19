@@ -1,3 +1,8 @@
+using Microsoft.AspNetCore.Http.HttpResults;
+using RoomHub.Api.Common;
+using RoomHub.Api.Common.Cqrs;
+using RoomHub.Api.Domain.Bookings;
+
 namespace RoomHub.Api.Features.Bookings.CreateBooking;
 
 public static class CreateBookingEndpoint
@@ -9,11 +14,20 @@ public static class CreateBookingEndpoint
     // Mapped on the "/api/rooms/{roomId}/bookings" group.
     public static void Map(RouteGroupBuilder group)
     {
-        group.MapPost("/", (Guid roomId, Request request, CreateBookingHandler handler) =>
+        group.MapPost("/", async Task<Results<Created<Response>, ProblemHttpResult>> (
+            Guid roomId,
+            Request request,
+            ICommandHandler<CreateBookingCommand, Booking> handler,
+            CancellationToken cancellationToken) =>
         {
-            var booking = handler.Handle(
+            var command = new CreateBookingCommand(
                 roomId, request.BookedBy, request.StartUtc, request.EndUtc, request.Attendees);
 
+            var result = await handler.Handle(command, cancellationToken);
+            if (result.IsFailure)
+                return result.Error.ToProblem();
+
+            var booking = result.Value;
             return TypedResults.Created(
                 $"/api/bookings/{booking.Id}",
                 new Response(booking.Id, booking.RoomId, booking.Status.ToString()));

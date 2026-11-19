@@ -1,27 +1,23 @@
-using RoomHub.Api.Common;
+using RoomHub.Api.Common.Cqrs;
+using RoomHub.Api.Domain.Common;
 using RoomHub.Api.Domain.Rooms;
-using RoomHub.Api.Infrastructure.Persistence.Repositories;
 
 namespace RoomHub.Api.Features.Rooms.CreateRoom;
 
-public sealed class CreateRoomHandler(RoomRepository rooms)
+public sealed record CreateRoomCommand(string? Name, int Capacity) : ICommand<Room>;
+
+public sealed class CreateRoomHandler(IRoomRepository rooms, IUnitOfWork unitOfWork)
+    : ICommandHandler<CreateRoomCommand, Room>
 {
-    public Room Handle(string? name, int capacity)
+    public async Task<Result<Room>> Handle(CreateRoomCommand command, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new BusinessException("InvalidName", "Room name is required.", 400);
+        var result = Room.Create(command.Name, command.Capacity);
+        if (result.IsFailure)
+            return result.Error;
 
-        if (capacity <= 0)
-            throw new BusinessException("InvalidCapacity", "Capacity must be positive.", 400);
+        rooms.Add(result.Value);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var room = new Room
-        {
-            Id = Guid.NewGuid(),
-            Name = name.Trim(),
-            Capacity = capacity
-        };
-
-        rooms.Add(room);
-        return room;
+        return result.Value;
     }
 }
